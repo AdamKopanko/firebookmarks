@@ -1,0 +1,68 @@
+#/bin/sh
+#################### dependency######################
+#sqlite3
+#printf
+#sed
+#tr
+#dmenu   https://wiki.archlinux.org/index.php/dmenu
+# or rofi   https://davedavenport.github.io/rofi/
+# optional
+# firefox
+# w3m
+# xsell
+######################################################
+################config###############################
+DYNAMIC_MENU=/usr/bin/dmenu
+MENU_ARGS="-i -l 20"
+#List external programs for open selected url
+OPEN_URL_IN="firefox  w3m  clip-manager"
+
+# default path to db firefox
+PATH_DB_FIREFOX=`echo ~/.mozilla/firefox/*.default/places.sqlite`
+
+TYPE_FOLDER=2
+TYPE_BOOKMARK=1
+####QUERY
+declare -A SQL_QUERY
+SQL_QUERY['ALL']="SELECT r.title||' '||' '|| dz.title||' '||'[ '||p.url||' ]'
+FROM moz_bookmarks  as dz
+JOIN moz_places p ON dz.fk=p.id
+LEFT JOIN moz_bookmarks r ON dz.parent=r.id
+WHERE p.url like 'http%'
+ORDER BY r.title , dz.title"
+
+#########################################################
+##########################MAIN##########################
+
+if ! [ -r  $PATH_DB_FIREFOX ]; then
+echo "SET PATH TO BOOKMARKS 'places.sqlite ' !!!" | $DYNAMIC_MENU &> /dev/null
+exit 0
+fi
+
+echo_menu() (
+  printf '%s\n' "$@"
+)
+
+#  if more than one SQL_QUERY chose which query do
+if [ ${#SQL_QUERY[@]} -gt 1 ]
+then
+       THIS_QUERY=`echo_menu "${!SQL_QUERY[@]}" | ${DYNAMIC_MENU} | tr -d ' '`
+else
+       THIS_QUERY="${!SQL_QUERY[@]}"
+fi
+
+URL=`
+sqlite3 $PATH_DB_FIREFOX "${SQL_QUERY[$THIS_QUERY]}" | \
+${DYNAMIC_MENU} ${MENU_ARGS} | \
+sed -n 's/.*\(http[s]*:\/\/[0-9a-zA-Z\.-\/_\-]\+\).*/\1/p'`
+
+# url allways copy to clipboard 
+echo "$URL" | xsel -i -b
+
+OPEN_URL_IN=`echo_menu  $OPEN_URL_IN | ${DYNAMIC_MENU} ${DMENU_ARGS} `
+case "${OPEN_URL_IN}" in
+firefox) firefox -new-tab "$URL" ;;
+w3m) i3-sensible-terminal -e "exec tmux new-session w3m $URL";;
+clip-manager) clip-manager ;;
+esac
+
